@@ -1,0 +1,62 @@
+.docker:
+  tags:
+    - docker
+  allow_failure: false
+
+image: docker:19.03.0-dind
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_HOST: tcp://docker:2375
+  REGISTRY_BASE_PATH: $CI_REGISTRY/moj/docker-builds
+  ECR_URL: 610306528329.dkr.ecr.eu-west-2.amazonaws.com
+  ECR_BASE_URL: $ECR_URL/moj
+  REGION: eu-west-2
+
+services:
+  - name: docker:19.03.0-dind
+    alias: docker
+    entrypoint: ["env", "-u", "DOCKER_HOST"]
+    command: ["dockerd-entrypoint.sh"]
+
+before_script:
+  - apk update
+  - apk add py-pip
+  - apk add --no-cache curl jq
+  - pip install awscli
+  - $(aws ecr get-login --no-include-email --region "${REGION}")
+  - IMAGE_TAG="$(echo $CI_COMMIT_SHA | head -c 8)"
+
+stages:
+  - build
+
+build_and_push_ansible:
+  stage: build
+  extends: .docker
+  variables:
+    BUILD_VER: ansible:$CI_PIPELINE_IID
+  script:
+    - docker build -t $ECR_BASE_URL/$BUILD_VER ansible/2.9.2
+    - docker push $ECR_BASE_URL/$BUILD_VER
+  when: manual
+
+build_and_push_terraform:
+  stage: build
+  extends: .docker
+  variables:
+    BUILD_VER: terraform:$CI_PIPELINE_IID
+  script:
+    - docker build -t $ECR_BASE_URL/$BUILD_VER terraform/1.0.1
+    - docker push $ECR_BASE_URL/$BUILD_VER
+  when: manual
+
+build_and_push_mojtools:
+  stage: build
+  extends: .docker
+  variables:
+    BUILD_VER: mojtools:$CI_PIPELINE_IID
+  script:
+    - docker build -t $ECR_BASE_URL/$BUILD_VER mojtools
+    - docker push $ECR_BASE_URL/$BUILD_VER
+  when: manual
